@@ -4,8 +4,26 @@ Project by doOnline.
 # webm-convert
 webm-convert is a video-converter binary which requires ffmpeg 4.0+. Used to convert all video formats & codecs which are not compatible with HTML5 on most browsers and machines to be converted to the .webm format with the most optimal speed/quality.
 
-## Install
+## Required packages:
++ ffmpeg version 4.0 or higher.
 
+## Install
+Step 1 (Cloning git repository):
+```
+git clone https://github.com/DoOnlineNL/webm-convert.git;
+```
+Step 2 (Make executable and run):
+```
+chmod a+x ./webm-convert/webm-convert && ./webm-convert/webm-convert;
+```
+Step 3 (Create symlink as non-root):
+```
+path=$(echo "`readlink -f -- $(dirname -- $0)`/webm-convert") && cd /usr/bin && sudo mv "${path}"/webm-convert ./webm-convert && cd "${path}"/../;
+```
+Step 4 (Test the symlink, it should work troughout the whole server without selecting the installed sshfs-mount file)
+```
+webm-convert && echo -n "Successfully installed webm-convert, Cleaning download directory now..." && sudo rm -r sshfs-mount/ && echo -n "Finished installing webm-convert for this user. Please visit https://doonline.nl/ for more of this good stuff...";
+```
 
 ## License
 Project is licensed under MIT License
