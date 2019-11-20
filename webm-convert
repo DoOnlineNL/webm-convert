@@ -1,0 +1,337 @@
+#!/bin/bash
+# author: doOnline.nl, Danny v. Dooijeweert
+# required: ffmpeg 4.0+
+
+# Script Constants ------------------------------------------------------------------------------------------------------------
+_NAME=`basename $0`;
+_DESC='Converts all types of mediafiles to webm format with ffmpeg while pre-configured for optimal conversion quality/speed.';
+_VERSION='1.0.0';
+
+# Static Variables ------------------------------------------------------------------------------------------------------------
+
+# New file extention of converted video
+FILEXT='.webm';
+
+# Array (Possible codec substrings in filename which should be removed)
+SUBSTR[0]='WEBRip';
+SUBSTR[1]='x264';
+SUBSTR[2]='AAC';
+SUBSTR[3]='HEVC';
+SUBSTR[4]='WEB-DL';
+SUBSTR[5]='DDP5.1';
+SUBSTR[6]='EAC3';
+SUBSTR[7]='AVC';
+SUBSTR[8]='HDTV';
+SUBSTR[9]='h.265';
+SUBSTR[10]='BDRip';
+SUBSTR[11]='1080p';
+SUBSTR[12]='720p';
+SUBSTR[13]='1080';
+SUBSTR[14]='720';
+
+# Non-Static Variables --------------------------------------------------------------------------------------------------------
+PROCEED=false;
+START='no'
+
+FILECOUNT=0;
+FILES[0]='sample.mkv';
+
+INPUT='sample.mkv';
+
+SOURCEDIR=false;
+SOURCEDIRPATH=./;
+SOURCETYPE='mkv';
+
+VIDEOCODEC='VP8';
+VIDEOLIB='libvpx';
+AUDIOCODEC='vorbis';
+AUDIOLIB='libvorbis';
+CONVERSION='all';
+
+RESOLUTION=1080;
+AVGBITRATE=1000;
+FRAMESPERS=24;
+AUDIOCHANNELS=2;
+THREADCOUNT=0;
+RENDERSPEED=4;
+AVGQUALITY=10;
+
+# Option and Argument handling ------------------------------------------------------------------------------------------------
+ARGS=0;
+OPTIND=1;
+while getopts "hsrlf:p:i:o:v:a:t:R:F:B:T:C:S:Q:" opt; do
+    ARGS=1
+    case "$opt" in
+    h)  printf "[$_NAME] help: $_NAME -> v$_VERSION
+$_DESC
+-----------------------------------------------------
+-option (option description) : default
+-h (print help information and script log)
+
+-s (save configuration) : false, (DISABLED)
+-r (display runtime log information) : true (DISABLED)
+
+-i (source input) : video.mkv,
+-o (source output) : video.webm,
+
+-l (list from source directory) : false,
+-f (allowed source filetype) : mkv,
+-p (source directory path) : ./,
+
+-v (video codec [VP8/VP9]) : VP8,
+-a (audio codec [vorbis/opus]) : vorbis,
+-t (conversion type [video (video only)/audio (audio only)/all (both)]) : all,
+
+-R (resolution quality [480/720/1080]) : 1080p,
+-F (Frames / second) : 24,
+-B (video bitrate avg. Kbits/s) : 1000K,
+-T (amount of threads used) : all,
+-C (audio channels [1 (mono)/2 (stereo)]) : 2
+-S (render speed [0-4]) : 4,
+-Q (avg quality [0-15 (lower is better)]) : 10,
+-----------------------------------------------------\n";
+        exit 0;
+        ;;
+
+    i)  INPUT=$OPTARG;
+        ;;
+    o)  OUTPUT=$OPTARG;
+        ;;
+
+    l)  SOURCEDIR=true;
+        ;;
+    p)  SOURCEDIRPATH=$OPTARG;
+        ;;
+    f)  SOURCETYPE=$OPTARG;
+        ;;
+
+    v)  VIDEOCODEC=$OPTARG;
+        ;;
+    a)  AUDIOCODEC=$OPTARG;
+        ;;
+    t)  CONVERSION=$OPTARG;
+        ;;
+
+    R)  RESOLUTION=$OPTARG;
+        ;;
+    F)  FRAMESPERS=$OPTARG;
+        ;;
+    B)  AVGBITRATE=$OPTARG;
+        ;;
+    T)  THREADCOUNT=$OPTARG;
+        ;;
+    C)  AUDIOCHANNELS=$OPTARG;
+        ;;
+    S)  RENDERSPEED=$OPTARG;
+        ;;
+    Q)  AVGQUALITY=$OPTARG;
+        ;;
+
+    :)  echo -n "[$_NAME] Option -$OPTARG requires an argument.";
+      	exit 1;
+	;;
+    esac
+done
+# Functions -------------------------------------------------------------------------------------------------------------------
+function genFileName(){
+
+	local input="$1";
+	local output="${input%%."${SOURCETYPE}"}";
+
+	IFS=$'\n'; set -f
+
+	for i in "${SUBSTR[@]}"
+	do
+		output="${output//\[${i}\]/}";
+		output="${output//.${i}/}";
+	done
+
+	output="${output//\ -\ /-}";
+	output="${output//\ :\ /:}";
+	output="${output//\ /.}";
+	output="${output//.-./.}";
+	output="${output//.:./.}";
+	output="${output//._/.}";
+	output="${output//../.}";
+	output="${output//__/_}";
+	# output="${output//\[*\]/}"; ERROR if file begins and ends with [ and ], output filename will be none
+
+	if [ "$CONVERSION" = 'video' ]; then
+		output="$output[$VIDEOCODEC][$RESOLUTION"'p'"]$FILEXT";
+	elif [ "$CONVERSION" = 'audio' ]; then
+		output="$output[$AUDIOCODEC]$FILEXT";
+	else
+		output="$output[$VIDEOCODEC][$AUDIOCODEC][$RESOLUTION"'p'"]$FILEXT";
+	fi
+
+	output="${output//_.webm/.webm}";
+	output="${output//..webm/.webm}";
+
+	output="${output//\]_/\]}";
+	output="${output//_\[/\[}";
+
+	output="${output##_}";
+
+	unset IFS; set +f
+
+	echo "$output";
+}
+
+# Parsing ---------------------------------------------------------------------------------------------------------------------
+# Handle script options and arguments
+shift $((OPTIND-1));
+[ "${1:-}" = "--" ] && shift;
+
+# Handle output file
+if [ -z "$OUTPUT" ] && [ $SOURCEDIR = false ]; then
+	
+	# Generate a filename from input for output
+	OUTPUT=$(genFileName "$INPUT");
+
+elif [ ! -z "$OUTPUT" ] && [ $SOURCEDIR = false ]; then
+	
+	# Make sure file extention is correct and not double if user used .webm at the end already
+	OUTPUT=${OUTPUT%%.webm}$FILEXT;
+
+fi
+
+# Handle codec libraries
+if [ "$VIDEOCODEC" = 'VP9' ]; then
+	VIDEOLIB='libvpx-vp9'; # VP9 if set correct
+else
+	VIDEOLIB='libvpx'; # VP8 as default fallback
+fi
+
+if [ "$AUDIOCODEC" = 'opus' ]; then
+	AUDIOLIB='libopus'; # libopus if set correct
+else
+	AUDIOLIB='libvorbis'; # libvorbis as default fallback
+fi
+
+# Confirm Configuration -------------------------------------------------------------------------------------------------------
+printf "[$_NAME] Current configuration:
+-----------------------------------------------------
+Convert directory?: $SOURCEDIR\n";
+
+if [ "$SOURCEDIR" = true ] && [ ! -z "$SOURCEDIRPATH" ]; then
+
+printf "Source files (.$SOURCETYPE):\n";
+ls -R `dirname "${SOURCEDIRPATH}"`/*."${SOURCETYPE}";
+
+else
+
+printf "Source file: $INPUT
+Output file: $OUTPUT \n";
+
+fi
+
+printf "Conversion type: $CONVERSION
+Render Speed: $RENDERSPEED
+Resolution: $RESOLUTION"'p'"
+Threads used: $THREADCOUNT
+Audio Channels: $AUDIOCHANNELS
+Video codec: $VIDEOCODEC
+Audio codec: $AUDIOCODEC
+Avarage quality: $AVGQUALITY
+Avarage bitrate: $AVGBITRATE"'K'"
+Frames/second: $FRAMESPERS
+-----------------------------------------------------\n";
+
+printf "Are you sure you want to proceed with this configuration? [yes/no] : "; read CONFIRM;
+
+# Listing and preparing files to be converted ---------------------------------------------------------------------------------
+if [ ! -z "$CONFIRM" ]; then
+
+	if [ "$CONFIRM" = 'yes' ] || [ "$CONFIRM" = 'y' ]; then
+
+		PROCEED=true;
+
+	elif [ "$CONFIRM" = 'no' ] || [ "$CONFIRM" = 'n' ]; then
+
+		printf "Are you sure you want to stop the conversion? [yes/no] : "; read STOP;
+
+		if [ "$STOP" = 'yes' ] || [ "$STOP" = 'y' ]; then
+
+			printf "use $_NAME -h for more options and configuration...\nShutting down."; exit 0;
+
+		elif [ "$STOP" = 'no' ] || [ "$STOP" = 'n' ]; then
+
+			printf "use $_NAME -h for more options and configuration...\nShutting down."; exit 0;
+
+		fi
+	fi
+else
+
+	printf "use $_NAME -h for more options and configuration...\nShutting down."; exit 0;
+
+fi
+
+# Executing ffmpeg and converting to webm -------------------------------------------------------------------------------------
+if [ "$PROCEED" = true ]; then
+	
+	if [ "$SOURCEDIR" = true ]; then
+
+		# get a list of files and choose the ones to convert
+		IFS=$'\n'; set -f
+		for FILE in $(find `dirname "${SOURCEDIRPATH}"` -name '*.'${SOURCETYPE});
+		do
+			printf "Are you sure you want to convert ${FILE}?\n[yes/no] : "; read CONVERT;
+			if [ "$CONVERT" = 'yes' ] || [ "$CONVERT" = 'y' ]; then
+				FILES[${FILECOUNT}]="${FILE}";
+				((FILECOUNT=$FILECOUNT+1));
+			fi
+		done
+		unset IFS; set +f
+		
+		# Show array with files to convert
+		# echo -n "${FILES[@]}";
+
+		printf "Start converting now? [yes/no] : "; read STARTCONVERTING;
+
+		if [ "$STARTCONVERTING" = 'yes' ] || [ "$STARTCONVERTING" = 'y' ]; then
+			
+			for FILE in "${FILES[@]}"
+			do
+				printf "\nStart converting file: $FILE\n";
+
+				OUTPUT=$(genFileName "${FILE}");
+
+				if [ "$CONVERSION" = 'audio' ]; then
+					ffmpeg -v quiet -stats -y -i "${FILE}" -c:v copy -crf "$AVGQUALITY" -threads "$THREADCOUNT" -speed "$RENDERSPEED" -g 9999 -f webm -c:a "$AUDIOLIB" -ac "$AUDIOCHANNELS" "$OUTPUT";
+			RESULT=$?;
+				elif [ "$CONVERSION" = 'video' ]; then
+					ffmpeg -v quiet -stats -y -i "${FILE}" -c:v "$VIDEOLIB" -b:v "$AVGBITRATE"K -crf "$AVGQUALITY" -threads "$THREADCOUNT" -speed "$RENDERSPEED" -vf scale=-1:"$RESOLUTION" -r "$FRAMESPERS" -g 9999 -f webm -c:a copy "$OUTPUT";
+					RESULT=$?;
+				else
+					ffmpeg -v quiet -stats -y -i "${FILE}" -c:v "$VIDEOLIB" -b:v "$AVGBITRATE"K -crf "$AVGQUALITY" -threads "$THREADCOUNT" -speed "$RENDERSPEED" -vf scale=-1:"$RESOLUTION" -r "$FRAMESPERS" -g 9999 -f webm -c:a "$AUDIOLIB" -ac "$AUDIOCHANNELS" "$OUTPUT";
+					RESULT=$?;
+				fi
+
+				printf "\nFinished converting to: ${OUTPUT}\n";
+			
+			done
+
+		fi
+
+	else
+		printf "\nStart converting file: $INPUT\n";
+
+		OUTPUT=$(genFileName "${INPUT}");
+
+		if [ "$CONVERSION" = 'audio' ]; then
+			ffmpeg -v quiet -stats -y -i "$INPUT" -c:v copy -crf "$AVGQUALITY" -threads "$THREADCOUNT" -speed "$RENDERSPEED" -g 9999 -f webm -c:a "$AUDIOLIB" -ac "$AUDIOCHANNELS" "$OUTPUT";
+			RESULT=$?;
+		elif [ "$CONVERSION" = 'video' ]; then
+			ffmpeg -v quiet -stats -y -i "$INPUT" -c:v "$VIDEOLIB" -b:v "$AVGBITRATE"K -crf "$AVGQUALITY" -threads "$THREADCOUNT" -speed "$RENDERSPEED" -vf scale=-1:"$RESOLUTION" -r "$FRAMESPERS" -g 9999 -f webm -c:a copy "$OUTPUT";
+			RESULT=$?;
+		else
+			ffmpeg -v quiet -stats -y -i "$INPUT" -c:v "$VIDEOLIB" -b:v "$AVGBITRATE"K -crf "$AVGQUALITY" -threads "$THREADCOUNT" -speed "$RENDERSPEED" -vf scale=-1:"$RESOLUTION" -r "$FRAMESPERS" -g 9999 -f webm -c:a "$AUDIOLIB" -ac "$AUDIOCHANNELS" "$OUTPUT";
+			RESULT=$?;
+		fi
+
+		printf "\nFinished converting to: $OUTPUT\n";
+		
+	fi
+
+fi
+exit "$RESULT";
