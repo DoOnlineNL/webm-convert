@@ -1,7 +1,7 @@
 <img alt="image" src="https://avatars3.githubusercontent.com/u/54864194?s=460&v=4" width="75px">
 Project by doOnline.
 
-# GitHub Project
+# webm-convert
 webm-convert is a video-converter binary which requires ffmpeg 4.0+. Used to convert all video formats & codecs which are not compatible with HTML5 on most browsers and machines to be converted to the .webm format with the most optimal speed/quality.
 
 ## Install
