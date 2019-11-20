@@ -16,13 +16,13 @@ Step 2 (Make executable and run):
 ```
 chmod a+x ./webm-convert/webm-convert && ./webm-convert/webm-convert;
 ```
-Step 3 (Create symlink as non-root):
+Step 3 (Create symlink as non-root/root):
 ```
 path=$(echo "`readlink -f -- $(dirname -- $0)`/webm-convert") && cd /usr/bin && sudo mv "${path}"/webm-convert ./webm-convert && cd "${path}"/../;
 ```
 Step 4 (Test the symlink, it should work troughout the whole server without selecting the installed sshfs-mount file)
 ```
-webm-convert && echo -n "Successfully installed webm-convert, Cleaning download directory now..." && sudo rm -r sshfs-mount/ && echo -n "Finished installing webm-convert for this user. Please visit https://doonline.nl/ for more of this good stuff...";
+webm-convert && echo -n "Successfully installed webm-convert, Cleaning download directory now..." && sudo rm -r webm-convert/ && echo -n "Finished installing webm-convert for this user. Please visit https://doonline.nl/ for more of this good stuff...";
 ```
 
 ## License
